@@ -37,7 +37,6 @@ A CNF formula is a conjunction of clauses.
 It is represented as an ordered set of clauses.
 -}
 type Formula = Set Clause
--- ex: [[1, 2], [-1, 3]] = (1 ∨ 2) ∧ (¬1 ∨ 3)
 
 {-
 An interpretation is a set of literals assumed to be true.
@@ -63,6 +62,9 @@ toFormula :: [[Literal]] -> Formula
 -- Formula is a set of sets of literals,
 -- each set is unique and sorted by size and then by elements
 toFormula = Set.fromList . map toClause
+-- EX:
+-- [[1, 2], [-1, 3]]
+-- (1 ∨ 2) ∧ (¬1 ∨ 3)
 
 {-
 Transforms a formula into a list of lists of literals, for readability.
@@ -224,7 +226,8 @@ fromList [1,2,3]
 -}
 formulaVariables :: Formula -> Set Variable
 -- the result of set.map will be a set of sets, so we need to combine them
-formulaVariables = formulaLiterals . Set.map clauseVariables
+-- Set.unions here is equivalent to formulaLiterals
+formulaVariables = Set.unions . Set.map clauseVariables
 
 {-
 *** TODO ***
@@ -407,11 +410,17 @@ Examples:
 [fromList [1,2],fromList [-2,1],fromList [-1,2],fromList [-2,-1]]
 -}
 interpretations :: Set Variable -> [Interpretation]
--- Tolist only format the set in the list
--- The Lambda function transforms a number in the list of 2 numbers adding the complementary
--- Sequency receives a list of lists and returns all possible combinations
--- format back in the set
-interpretations = map Set.fromList . sequence . (\x -> [[-y, y] | y <- x]) . Set.toList
+-- generates all possible truth assignments for a set of variables
+-- first converts the variable set to a list with Set.toList
+-- then maps each variable to both its positive and negative literals
+-- uses foldr with a combine helper function to build all possible combinations
+-- starting with an empty interpretation [Set.empty]
+-- list comprehension creates new interpretations by taking each accumulated interpretation
+-- and adding either the positive or negative version of each variable
+interpretations = foldr combine [Set.empty] . map (\v -> [v, -v]) . Set.toList
+  where
+    combine :: [Literal] -> [Interpretation] -> [Interpretation]
+    combine [pos, neg] acc = [Set.insert lit interp | lit <- [pos, neg], interp <- acc]
 
 {-
 *** TODO ***
@@ -456,4 +465,6 @@ isSatisfiable :: Formula -> Bool
 -- first gets all variables in the formula using formulaVariables
 -- then generates all possible interpretations for those variables
 -- finally checks if any of these interpretations satisfies the formula
+-- uses lazy evaluation to stop once a satisfying interpretation is found
+-- which avoids generating all 2^n interpretations in many cases
 isSatisfiable formula = any (`satisfiesFormula` formula) $ interpretations $ formulaVariables formula
