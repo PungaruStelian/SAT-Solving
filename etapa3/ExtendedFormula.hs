@@ -4,7 +4,7 @@ import Formula
 
 import Data.Set (Set)
 import qualified Data.Set as Set
-
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -125,7 +125,11 @@ Exemple:
 fromList [-2,1,2]
 -}
 promote :: (Formula -> a) -> ExtendedFormula -> a
-promote = undefined
+-- in input am o functie care primeste o formula si intoarce ceva, si un extendedFormula
+-- vreau sa returnez tot acel ceva, dar functia sa fie aplicata din de pe formula pe extended
+-- asadar transform extendedformula in formula, si aplic functia pe ea.
+-- practic aplic numai pe chei
+promote = (. baseFormula)
 
 {-
 *** TODO ***
@@ -156,7 +160,20 @@ fromList [(fromList [2],fromList [1,2])]
 Mai sus, clauza { -1, 3} dispare, iar din caluza {1, 2} dispare literalul 1.
 -}
 eliminate :: Literal -> ExtendedFormula -> ExtendedFormula
-eliminate literal = undefined
+-- fromList [
+--     (fromList [1,2], fromList [1,2]),
+--     (fromList [-1,3], fromList [-1,3])
+-- ]
+-- literal = 1
+-- =>
+-- fromList [
+--     (fromList [3], fromList [-1,3])
+-- ]
+
+-- Map .filterwithkey elimina cheile si valorile pentru care cheie nu respecta functia lambda,
+-- de aceea nu ne intereseaza al 2 parametru
+-- ulterior aplic caut fiecare cheie (fiind un set) si elimin doar prezenta literalului
+eliminate literal = Map.mapKeys (Set.delete (-literal)) . Map.filterWithKey (\key _ -> Set.notMember literal key)
 
 {-
 *** TODO ***
@@ -167,6 +184,8 @@ perspectiva mulțimilor ordonate.
 
 Reflectați dacă implementarea voastră desfășoară calcule doar până la 
 determinarea primului literal pur sau îi determină nenecesar pe toți.
+
+Raspuns: pana la primul pur
 
 CONSTRÂNGERI:
 
@@ -193,7 +212,12 @@ Just (-3)
 Mai sus, -3 și -2 sunt literali puri, dar primul (cel mai mic) este -3.
 -}
 firstPureLiteral :: ExtendedFormula -> Maybe Literal
-firstPureLiteral formula = undefined
+-- inputul este deja ordonat crescator (si in elementele din cheie, si cheile intre ele)
+-- ultima pereche de paranteze, fiind si pe ce se aplica find,
+-- combina toate literalele din extendedformula(doar cheile: set de seturi) intr un set
+-- pentru fiecare literal din acest set verific aplic functia isPureLiteral asociata
+-- si returnez primul literal ce o respecta
+firstPureLiteral extFormula = find (\lit -> promote (isPureLiteral lit) extFormula) (promote formulaLiterals extFormula)
 
 {-
 *** TODO ***
@@ -207,6 +231,8 @@ cea originală, valoare.
 
 Reflectați dacă implementarea voastră desfășoară calcule doar până la 
 determinarea primei clauze unitare sau le determină nenecesar pe toate.
+
+Raspuns: din cauza lui Map.foldrWithKey se opreste numai la finalul parcurgerii
 
 CONSTRÂNGERI:
 
@@ -235,7 +261,17 @@ Mai sus, după eliminarea lui 1, obținem clauza unitară {2}, care corespunde
 clauzei originale { -1, 2}.
 -}
 firstUnitClause :: ExtendedFormula -> Maybe (Literal, Clause)
-firstUnitClause = undefined
+-- Set.findMin returneaza primul element dintr un set, nefiind lista nu pot folosi head
+-- cu ajutorul lui foldr suprascriem fiecare clauza pana ajungem la prima convenabila din map(cea mai mica)
+-- Map.foldrWithKey :: (k -> a -> b -> b) -> b -> Map k a -> b
+-- b = tipul acumulatorului, k = tipul cheii, a = tipul valorii
+-- din declararea functiei de mai sus ne dam seama ce argumente are si functia funct
+-- la fiecare pas, funct returneaza noul acumulator
+firstUnitClause = Map.foldrWithKey funct Nothing
+    where
+        funct key value acc
+            |   isUnitClause key = Just (Set.findMin key, value)
+            |   otherwise = acc
 
 {-
 *** TODO ***
@@ -440,4 +476,4 @@ dorim să ne întoarcem cât de mult posibil în trecut. În plus, versiunile
 clauzei {4, 5} sunt adăugate la versiunile formulei inițiale.
 -}
 backtrackToUnitClause :: Clause -> History -> History
-backtrackToUnitClause clause = undefined
+backtrackToUnitClause = undefined

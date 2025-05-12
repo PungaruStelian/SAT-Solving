@@ -54,7 +54,11 @@ fromList [2,3]
 fromList [2,3,4]
 -}
 resolve :: Literal -> Clause -> Clause -> Clause
-resolve literal clause1 clause2 = undefined
+-- comentariul oficial este suficient de clar
+resolve literal clause1 clause2 =
+    if Set.member (-literal) clause2
+        then Set.delete literal $ Set.delete (-literal) $ Set.union clause1 clause2
+        else clause2
 
 {-
 *** TODO ***
@@ -87,7 +91,16 @@ fromList [3,4]
 fromList [1,2]
 -}
 learn :: Clause -> [Action] -> Clause
-learn = undefined
+-- se aplica functia lambda cu acumulatorul initializat clausa
+-- si pe lista de action (din input)
+-- pentru fiecare action verific daca este de tipul unit si
+-- aplic functia resolve pe cele 2 componente unit si clauza curenta (acc)
+-- altfel pastrez acumulatorul curent
+learn = foldl (\acc action ->
+    case action of
+        Unit l c -> resolve l c acc
+        _        -> acc
+    )
 
 {-
 *** TODO ***
@@ -190,7 +203,7 @@ Decide {getLiteral = -7} => [[-6,-2,1],[-5,1],[-4,3],[-3,4],[-2,-1,6],[-2,5],[-1
 NOP => [[-7,1],[-6,-2,1],[-5,1],[-4,3],[-3,4],[-2,-1,6],[-2,5,7],[-1,2],[1,2]]
 -}
 satisfy :: Formula -> (Maybe Interpretation, History)
-satisfy formula = undefined
+satisfy = undefined
 
 {-
 Clasă ale cărei instanțe reprezintă probleme reductibile la SAT.
@@ -239,7 +252,7 @@ data Graph = Graph
     } deriving (Show, Eq)
 
 data Color = Red | Green | Blue
-    deriving (Show, Eq)
+    deriving (Show, Eq, Enum, Ord, Bounded)
 
 type Coloring = Map Node Color
 
@@ -262,9 +275,54 @@ instance Reducible ThreeColoring where
 >>> toLiteralLists $ encode $ ThreeColoring graph3 Map.empty
 [[-33,-32],[-33,-31],[-33,-23],[-33,-13],[-32,-31],[-32,-22],[-32,-12],[-31,-21],[-31,-11],[-23,-22],[-23,-21],[-23,-13],[-22,-21],[-22,-12],[-21,-11],[-13,-12],[-13,-11],[-12,-11],[11,12,13],[21,22,23],[31,32,33]]
 -}
-    -- encode :: ThreeColoring -> Formula
-    encode problem = undefined
-    
+    encode :: ThreeColoring -> Formula
+    -- la structura color am adaugat Enum pentru a asocia fiecarei culoare un index
+    -- Ord pentru a le compara si bounded pentru a crea o lista generica cu toate culorile
+    encode threeColoring =
+        toFormula $ map Set.toList $ Set.toList allClauses
+        where
+            theGraph = graph threeColoring
+            -- Lucrăm direct cu seturile, fără a le converti în liste
+            nodesSet = nodes theGraph
+            edgesSet = edges theGraph
+
+            colors = [minBound..maxBound]
+
+            calculate :: Node -> Color -> Literal
+            calculate node color = node * 10 + fromEnum color + 1
+
+            -- pentru fiecare nod din graf, generam o clauza care contine toate culorile
+            allColor = Set.map
+                (\node -> toClause (map (calculate node) colors))
+                nodesSet
+
+            -- generam o formula in care fiecare set din set reprezinta
+            -- o multime de 2 culori negate, si sunt folosite toate nodurile 
+            aColor = Set.unions (Set.map excludeNode nodesSet)
+                where
+                    -- concat: din [[-1, -2] [-1, -3]] [[-2, -3]] [[]] in [[-1, -2] [-1, -3] [-2, -3]]
+                    -- pentru acest nod, generez setul de seturi cu oricare 2 culori negate
+                    -- similar cu generarea combinarilor luate cate 2
+                    excludeNode node = toFormula (concatMap (excludeColorPair node) colors)
+                    -- pastrezi doar culorile mai mari ca c1, si creez o lista de clauze,
+                    -- unde fiecare clauza contine 2 culori negate
+                    -- am folosit > si nu /= pentru a elimina generarea listelor duplicate
+                    -- lista se comporta ca un set
+                    excludeColorPair node c = map (exclude2colors  node c) (filter (> c) colors)
+                    -- nodul nu are culoarea c1 si nici c2
+                    exclude2colors  node c1 c2 = [-calculate node c1, -calculate node c2]
+
+            -- pentru fiecare muchie, eliminima toate culorile identice pentru cele 2 noduri
+            diffColors = Set.unions (Set.map createEdge edgesSet)
+                where
+                    -- set de seturi in care am eliminat fiecare culoare pentru cele 2 noduri
+                    createEdge (n1, n2) = toFormula (map (excludeColor n1 n2) colors)
+                    -- elimina culoarea pentru cele 2 noduri
+                    excludeColor n1 n2 c = [-calculate n1 c, -calculate n2 c]
+
+            -- insumez toate restrengerile
+            allClauses = Set.union diffColors (Set.union aColor allColor)
+
 {-
 >>> coloring $ decode (Set.fromList [-23,-22,-13,-11,12,21]) $ ThreeColoring graph2 Map.empty
 fromList [(1,Green),(2,Red)]
@@ -272,8 +330,27 @@ fromList [(1,Green),(2,Red)]
 >>> coloring $ decode (Set.fromList [-33,-32,-23,-21,-12,-11,13,22,31]) $ ThreeColoring graph3 Map.empty
 fromList [(1,Blue),(2,Green),(3,Red)]
 -}
-    -- decode :: Interpretation -> ThreeColoring -> ThreeColoring
-    decode interpretation problem = undefined
+    decode :: Interpretation -> ThreeColoring -> ThreeColoring
+    decode interpretation threeColoring =
+        ThreeColoring (graph threeColoring) newColoring
+        where
+            litToPair :: Literal -> Maybe (Node, Color)
+            -- pe baza literalului extrag nodul si culoarea, doar daca este valabil(pozitiv)
+            litToPair lit =
+                if lit > 0
+                    then Just (nodeVal, colors !! (colorCode - 1))
+                    else Nothing
+                where
+                    nodeVal = lit `div` 10
+                    colorCode = lit `mod` 10
+                    colors = [minBound .. maxBound]
+            -- interpretarea este un det de numere, parcurg de la dreapta
+            -- si pentru fiecare numar extrag nodul si culoarea daca este cazul
+            -- Map.fromList transforma din lista de asocieri in tipul Map
+            newColoring = Map.fromList $ 
+                Set.foldr (\lit acc -> case litToPair lit of
+                            Just pair -> pair : acc
+                            Nothing -> acc) [] interpretation
 
 {-
 Exemple de grafuri neorientate.

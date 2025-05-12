@@ -50,18 +50,27 @@ type Interpretation = Set Literal
 Construiește o clauză dintr-o listă de literali.
 -}
 toClause :: [Literal] -> Clause
+-- face din lista un set: ordoneaza, elimina duplicatele
 toClause = Set.fromList
 
 {-
 Construiește o formulă dintr-o listă de liste de literali.
 -}
 toFormula :: [[Literal]] -> Formula
+-- un set este o lista de elemente unice, ordonate si din modul in care este reprezentat in
+-- sir de caractere: apare fromList in fata setului.
+-- Formula este un set de seturi de literali,
+-- fiecare set este unic si sortat dupa marime si apoi dupa elemente
 toFormula = Set.fromList . map toClause
+-- EX:
+-- [[1, 2], [-1, 3]]
+-- (1 ∨ 2) ∧ (¬1 ∨ 3)
 
 {-
 Transformă o formulă într-o listă de liste de literali, pentru lizibilitate.
 -}
 toLiteralLists :: Formula -> [[Literal]]
+-- pe rand ajungem de la un set de seturi la o lista de seturi si apoi o lista de liste
 toLiteralLists = map Set.toList . Set.toList
 
 {-
@@ -77,17 +86,17 @@ CONSTRÂNGERI:
 Exemple:
 
 >>> literalVariable 1
-1
+Prelude.undefined:\Users\punga\AppData\Local\Temp\extF7A5: withFile: does not exist (No such file or directory):\Users\punga\AppData\Local\Temp\extF7A5: withFile: permission denied (Permission denied)
 
 >>> literalVariable (-1)
-1
+Prelude.undefinedrelude.undefinedrelude.undefined
 
 Observați plasarea lui (-1) între paranteze. Absența lor, ca în
 literalVariable -1, ar fi determinat scăderea lui 1 din literalVariable, 
 operație fără sens.
 -}
 literalVariable :: Literal -> Variable
-literalVariable = undefined
+literalVariable = abs
 
 {-
 *** TODO ***
@@ -108,7 +117,7 @@ True
 False
 -}
 isPositive :: Literal -> Bool
-isPositive = undefined
+isPositive = (> 0)
 
 {-
 *** TODO ***
@@ -129,7 +138,7 @@ False
 True
 -}
 isNegative :: Literal -> Bool
-isNegative = undefined
+isNegative = (0 >)
 
 {-
 *** TODO ***
@@ -149,7 +158,8 @@ Exemple:
 1
 -}
 complement :: Literal -> Literal
-complement = undefined
+-- lambda function
+complement = negate
 
 {-
 *** TODO ***
@@ -171,7 +181,9 @@ fromList [-2,-1,1,2,3]
 Observați cum literalii sunt implicit ordonați în mulțime.
 -}
 formulaLiterals :: Formula -> Set Literal
-formulaLiterals = undefined
+-- Set.union primeste 2 multimi si le combina: initial setul gol cu primul set,
+-- si apoi rezultatul cu urmatorul set
+formulaLiterals = Set.foldl Set.union Set.empty
 
 {-
 *** TODO ***
@@ -191,7 +203,9 @@ Exemple:
 fromList [1,2]
 -}
 clauseVariables :: Clause -> Set Variable
-clauseVariables = undefined
+-- actualizeaza setul intial cu rezultatele aplicari
+-- functiei pe fiecare element si ulterior elimina duplicatele
+clauseVariables = Set.map literalVariable -- abs
 
 {-
 *** TODO ***
@@ -211,7 +225,9 @@ Exemple:
 fromList [1,2,3]
 -}
 formulaVariables :: Formula -> Set Variable
-formulaVariables = undefined
+-- rexultatul lui set.map va fi un set de seturi, deci trebuie sa le unim
+-- Set.unions aici este echivalent cu formulaLiterals
+formulaVariables = Set.unions . Set.map clauseVariables
 
 {-
 *** TODO ***
@@ -241,7 +257,12 @@ True
 True
 -}
 isPureLiteral :: Literal -> Formula -> Bool
-isPureLiteral literal = undefined
+-- se presupune ca literal se afla in formula
+-- and intoarece un bool ca rezultat la aplicarea pe toate boolurile
+-- cu Set.notMember caut daca nu exista opusul lui literal si
+-- returneaza un bool pentru fiecare set cu ajutorul lui Set.map
+-- and [] = True
+isPureLiteral literal = and . Set.map (Set.notMember (complement literal))
 
 {-
 *** TODO ***
@@ -262,7 +283,7 @@ True
 False
 -}
 isUnitClause :: Clause -> Bool
-isUnitClause = undefined
+isUnitClause = (1 ==) . Set.size
 
 {-
 *** TODO ***
@@ -292,7 +313,14 @@ True
 False
 -}
 isValidClause :: Clause -> Bool
-isValidClause clause = undefined
+-- any f clause = adevarat daca cel putin un element respecta f
+-- Set.member x clause
+-- fara `` Set.member ar fi luat primul parametru setul in loc de element,
+-- acum creeaza o functie curry care asteapta doar elementul
+
+-- creez setul cu elementele complementare ale lui clause cu map
+-- verific cate un element din setul creat daca se afla in setul initial cu any
+isValidClause clause = any (`Set.member` clause) (Set.map complement clause)
 
 {-
 *** TODO ***
@@ -321,7 +349,7 @@ True
 False
 -}
 isValidFormula :: Formula -> Bool
-isValidFormula = undefined
+isValidFormula = all isValidClause
 
 {-
 *** TODO ***
@@ -349,7 +377,13 @@ False
 True
 -}
 satisfiesFormula :: Interpretation -> Formula -> Bool
-satisfiesFormula interpretation = undefined
+-- in interpretation sunt numere in valoarea lor de adevar,
+-- asta inseamana ca daca apare opusul numarului reprezinta fals
+-- Iau mai intai fiecare clauza si apoi fiecare element din clauza
+-- pe care il caut in interpretation penttru a vedea daca este adevarat
+-- Daca am gasit unul atunci toata clauza este adevarata.
+-- Daca toate clauzele sunt adevarate atuncti formula este satisfacuta
+satisfiesFormula interpretation = all (any (`Set.member` interpretation))
 
 {-
 *** TODO ***
@@ -376,7 +410,11 @@ Exemple:
 [fromList [1,2],fromList [-2,1],fromList [-1,2],fromList [-2,-1]]
 -}
 interpretations :: Set Variable -> [Interpretation]
-interpretations = undefined
+-- toList doar formateaza setul in lista
+-- functia lambda transforma un numar in lista de 2 numere adaugand si complementarul
+-- sequence primeste o lista de liste si returneaza toate combinatiile posibile
+-- formatam inapoi in set
+interpretations = map Set.fromList . sequence . (\x -> [[-y, y] | y <- x]) . Set.toList
 
 {-
 *** TODO ***
@@ -417,4 +455,8 @@ False
 RĂSPUNS: ...
 -}
 isSatisfiable :: Formula -> Bool
-isSatisfiable formula = undefined
+-- Verificări dacă există cel puțin o interpretare care face ca formula să fie adevărată
+-- Mai întâi primește toate variabilele în formulă folosind formulavariabile
+-- apoi generează toate interpretările posibile pentru acele variabile
+-- În sfârșit, verifică dacă oricare dintre aceste interpretări satisface formula
+isSatisfiable formula = any (`satisfiesFormula` formula) $ interpretations $ formulaVariables formula
